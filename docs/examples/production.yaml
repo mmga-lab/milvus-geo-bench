@@ -1,0 +1,40 @@
+# Production Configuration  
+# Comprehensive benchmarking configuration for production testing
+
+dataset:
+  # Large dataset for comprehensive testing
+  num_points: 1000000
+  num_queries: 10000
+  
+  # Continental US bounding box
+  bbox: [-125, 25, -65, 50]
+  
+  # Higher requirements for realistic testing
+  min_points_per_query: 500
+  max_radius: 2.0
+  
+  # Production output directory
+  output_dir: "./production_benchmark"
+
+milvus:
+  # Production Milvus connection
+  uri: "${MILVUS_URI}"
+  token: "${MILVUS_TOKEN}"
+  
+  # Production collection name
+  collection: "production_geo_benchmark"
+  
+  # Large batches for performance
+  batch_size: 5000
+  
+  # Extended timeout for large operations
+  timeout: 120
+
+benchmark:
+  # Extended benchmark settings
+  timeout: 60
+  warmup: 50
+
+output:
+  results: "./production_benchmark/results.parquet"
+  report: "./production_reports/production_report.md"

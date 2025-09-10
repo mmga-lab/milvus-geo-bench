@@ -1,0 +1,69 @@
+# Configuration file for Milvus Geo Benchmark Tool
+# Copy this file to config.yaml and customize as needed
+
+dataset:
+  # Number of training points to generate
+  num_points: 100000
+  
+  # Number of test queries to generate
+  num_queries: 1000
+  
+  # Output directory for generated datasets
+  output_dir: ./data
+  
+  # Bounding box for point generation [min_lon, min_lat, max_lon, max_lat]
+  # Example: World [-180, -90, 180, 90]
+  # Example: Beijing area [116.0, 39.5, 117.0, 40.5]
+  bbox: [-180, -90, 180, 90]
+  
+  # Minimum number of points that each query should return
+  min_points_per_query: 100
+
+# Milvus connection configuration
+milvus:
+  # Milvus server URI (use environment variable)
+  uri: ${MILVUS_URI}
+  
+  # Milvus authentication token (use environment variable)
+  token: ${MILVUS_TOKEN}
+  
+  # Collection name for storing geo data
+  collection: geo_bench
+  
+  # Batch size for data insertion
+  batch_size: 1000
+  
+  # Connection timeout in seconds
+  timeout: 30
+
+# Benchmark execution settings
+benchmark:
+  # Query timeout in seconds
+  timeout: 30
+  
+  # Number of warmup queries to run before measurement
+  warmup: 10
+
+# Output settings
+output:
+  # Benchmark results file
+  results: ./data/results.parquet
+  
+  # Evaluation report file
+  report: ./reports/evaluation_report.md
+
+# Example configurations for different scenarios:
+#
+# Small test dataset:
+# dataset:
+#   num_points: 10000
+#   num_queries: 100
+#
+# Large scale benchmark:
+# dataset:
+#   num_points: 1000000
+#   num_queries: 10000
+#
+# Specific geographic region (San Francisco Bay Area):
+# dataset:
+#   bbox: [-122.5, 37.0, -121.5, 38.0]

@@ -1,0 +1,40 @@
+# Quick Test Configuration
+# Minimal configuration for rapid testing and CI/CD
+
+dataset:
+  # Minimal dataset for fastest testing
+  num_points: 500
+  num_queries: 5
+  
+  # Very small region for guaranteed success
+  bbox: [-0.5, -0.5, 0.5, 0.5]  # 1x1 degree area
+  
+  # Minimal requirements
+  min_points_per_query: 10
+  max_radius: 0.2
+  
+  # Quick test output directory
+  output_dir: "./quick_test"
+
+milvus:
+  # Test Milvus connection
+  uri: "${MILVUS_URI:-http://localhost:19530}"
+  token: "${MILVUS_TOKEN:-root:Milvus}"
+  
+  # Test collection name
+  collection: "quick_geo_test"
+  
+  # Small batches
+  batch_size: 50
+  
+  # Short timeout
+  timeout: 5
+
+benchmark:
+  # Minimal benchmark settings
+  timeout: 5
+  warmup: 1
+
+output:
+  results: "./quick_test/results.parquet"
+  report: "./quick_test/report.md"

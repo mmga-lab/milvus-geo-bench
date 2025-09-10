@@ -1,0 +1,40 @@
+# Development Configuration
+# Fast testing configuration for development and debugging
+
+dataset:
+  # Small dataset for quick testing
+  num_points: 1000
+  num_queries: 10
+  
+  # Small focused region for better query success
+  bbox: [-1, -1, 1, 1]  # 2x2 degree area
+  
+  # Lower requirements for faster generation
+  min_points_per_query: 20
+  max_radius: 0.5
+  
+  # Development output directory
+  output_dir: "./dev_test"
+
+milvus:
+  # Use environment variables for connection
+  uri: "${MILVUS_URI}"
+  token: "${MILVUS_TOKEN}"
+  
+  # Development collection name
+  collection: "dev_geo_test"
+  
+  # Smaller batches for development
+  batch_size: 100
+  
+  # Shorter timeout for quick feedback
+  timeout: 10
+
+benchmark:
+  # Quick benchmark settings
+  timeout: 10
+  warmup: 2
+
+output:
+  results: "./dev_test/results.parquet"
+  report: "./dev_test/report.md"

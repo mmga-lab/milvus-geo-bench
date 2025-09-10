@@ -1,0 +1,47 @@
+# Regional Configuration
+# Configuration for testing specific geographic regions
+
+dataset:
+  # Medium dataset for regional testing
+  num_points: 100000
+  num_queries: 1000
+  
+  # California bounding box (can be customized)
+  bbox: [-124, 32, -114, 42]  # California
+  # Alternative regions:
+  # bbox: [-106, 25, -93, 36]  # Texas
+  # bbox: [-87, 24, -79, 31]   # Florida  
+  # bbox: [-80, 40, -71, 45]   # New York
+  # bbox: [-2.5, 49, 2, 61]    # UK
+  # bbox: [2, 42, 8, 51]       # France
+  # bbox: [116, 39, 117, 41]   # Beijing area
+  
+  # Moderate requirements
+  min_points_per_query: 200
+  max_radius: 1.5
+  
+  # Regional output directory
+  output_dir: "./regional_benchmark"
+
+milvus:
+  # Regional Milvus connection
+  uri: "${MILVUS_URI}"
+  token: "${MILVUS_TOKEN}"
+  
+  # Regional collection name
+  collection: "regional_geo_benchmark"
+  
+  # Standard batch size
+  batch_size: 2000
+  
+  # Standard timeout
+  timeout: 60
+
+benchmark:
+  # Standard benchmark settings
+  timeout: 45
+  warmup: 20
+
+output:
+  results: "./regional_benchmark/results.parquet"
+  report: "./regional_reports/regional_report.md"
