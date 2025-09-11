@@ -48,6 +48,13 @@ def get_default_config() -> dict[str, Any]:
             "bbox": [-180, -90, 180, 90],
             "min_points_per_query": 100,
             "max_radius": 1.0,
+            "grid": {
+                "enabled": False,
+                "auto_calculate": True,
+                "target_points_per_grid": 1000000,
+                "min_grids": 1,
+                "max_grids": 1000,
+            },
         },
         "milvus": {
             "uri": os.getenv("MILVUS_URI", ""),

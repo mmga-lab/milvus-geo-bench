@@ -31,6 +31,13 @@ def cli(ctx, verbose: bool, config: str | None):
 @click.option("--output-dir", help="Output directory")
 @click.option("--bbox", help="Bounding box as min_lon,min_lat,max_lon,max_lat")
 @click.option("--min-points-per-query", type=int, help="Minimum points per query")
+@click.option(
+    "--grid-enabled", is_flag=True, help="Enable grid-based generation for large datasets"
+)
+@click.option("--num-grids", type=int, help="Number of grids (overrides auto-calculation)")
+@click.option(
+    "--target-points-per-grid", type=int, help="Target points per grid for auto-calculation"
+)
 @click.pass_context
 def generate_dataset(
     ctx,
@@ -39,6 +46,9 @@ def generate_dataset(
     output_dir: str | None,
     bbox: str | None,
     min_points_per_query: int | None,
+    grid_enabled: bool,
+    num_grids: int | None,
+    target_points_per_grid: int | None,
 ):
     """Generate training and test datasets"""
 
@@ -59,6 +69,22 @@ def generate_dataset(
         if len(bbox_list) != 4:
             raise click.BadParameter("bbox must be in format: min_lon,min_lat,max_lon,max_lat")
         dataset_config["bbox"] = bbox_list
+
+    # Grid configuration overrides
+    if grid_enabled:
+        dataset_config["grid"]["enabled"] = True
+    if num_grids is not None:
+        dataset_config["grid"]["enabled"] = True
+        dataset_config["grid"]["auto_calculate"] = False
+        dataset_config["grid"]["num_grids"] = num_grids
+    if target_points_per_grid is not None:
+        dataset_config["grid"]["enabled"] = True
+        dataset_config["grid"]["target_points_per_grid"] = target_points_per_grid
+
+    # Auto-enable grid for large datasets
+    if dataset_config["num_points"] >= 10_000_000 and not dataset_config["grid"]["enabled"]:
+        click.echo("Auto-enabling grid mode for large dataset (>= 10M points)")
+        dataset_config["grid"]["enabled"] = True
 
     # Get final values
     final_output_dir = dataset_config["output_dir"]
@@ -84,7 +110,9 @@ def generate_dataset(
 @click.option("--collection", help="Collection name")
 @click.option("--data-file", type=click.Path(exists=True), help="Training data file")
 @click.option("--batch-size", type=int, help="Batch size for insertion")
-@click.option("--recreate/--no-recreate", default=True, help="Recreate collection if exists (default: True)")
+@click.option(
+    "--recreate/--no-recreate", default=True, help="Recreate collection if exists (default: True)"
+)
 @click.pass_context
 def load_data(
     ctx,

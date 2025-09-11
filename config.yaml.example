@@ -18,6 +18,24 @@ dataset:
   
   # Minimum number of points that each query should return
   min_points_per_query: 100
+  
+  # Grid-based generation for large datasets (optimizes memory usage)
+  grid:
+    # Enable grid partitioning (auto-enabled for datasets > 10M points)
+    enabled: false
+    
+    # Automatically calculate optimal grid layout based on data size
+    auto_calculate: true
+    
+    # Target number of points per grid (1M recommended for balance of memory/performance)
+    target_points_per_grid: 1000000
+    
+    # Minimum and maximum number of grids
+    min_grids: 1
+    max_grids: 1000
+    
+    # Optional: Manual grid layout [rows, cols] - overrides auto_calculate
+    # grid_layout: [10, 10]
 
 # Milvus connection configuration
 milvus:
@@ -54,16 +72,49 @@ output:
 
 # Example configurations for different scenarios:
 #
-# Small test dataset:
+# Small test dataset (legacy mode):
 # dataset:
 #   num_points: 10000
 #   num_queries: 100
+#   grid:
+#     enabled: false
 #
-# Large scale benchmark:
+# Large scale benchmark (auto-enable grid):
 # dataset:
-#   num_points: 1000000
+#   num_points: 100000000  # 100M points - will auto-enable grid mode
 #   num_queries: 10000
+#   grid:
+#     target_points_per_grid: 5000000  # 5M points per grid
+#
+# Manual grid configuration for 25M points:
+# dataset:
+#   num_points: 25000000
+#   num_queries: 5000  
+#   grid:
+#     enabled: true
+#     auto_calculate: false
+#     grid_layout: [5, 5]  # 25 grids in 5x5 layout
 #
 # Specific geographic region (San Francisco Bay Area):
 # dataset:
 #   bbox: [-122.5, 37.0, -121.5, 38.0]
+#   num_points: 1000000
+#   grid:
+#     enabled: true
+#     target_points_per_grid: 500000
+
+# Usage Examples:
+#
+# Generate small dataset (legacy mode):
+#   milvus-geo-bench --config config.yaml generate-dataset --num-points 100000
+#
+# Generate large dataset (auto-enable grid):  
+#   milvus-geo-bench --config config.yaml generate-dataset --num-points 100000000
+#
+# Generate with explicit grid configuration:
+#   milvus-geo-bench --config config.yaml generate-dataset \
+#     --num-points 50000000 --grid-enabled --target-points-per-grid 5000000
+#
+# Generate with manual grid layout:
+#   milvus-geo-bench --config config.yaml generate-dataset \
+#     --num-points 25000000 --grid-enabled --num-grids 25
