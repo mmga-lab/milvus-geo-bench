@@ -56,7 +56,7 @@ def get_default_config() -> dict[str, Any]:
             "batch_size": 1000,
             "timeout": 30,
         },
-        "benchmark": {"timeout": 30, "warmup": 10},
+        "benchmark": {"timeout": 30, "warmup": 10, "concurrency": 1},
         "output": {"results": "./data/results.parquet", "report": "./reports/report.md"},
     }
 

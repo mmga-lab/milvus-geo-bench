@@ -10,7 +10,7 @@ A comprehensive benchmark tool for evaluating Milvus geo search functionality wi
 - **Performance Benchmarking**: Measure query latency, throughput, and success rates
 - **Accuracy Evaluation**: Compare results against ground truth with precision/recall metrics
 - **Comprehensive Reports**: Generate detailed markdown and JSON evaluation reports
-- **Flexible CLI**: Easy-to-use command-line interface with multiple workflows
+- **Flexible CLI**: Easy-to-use command-line interface with configuration file support
 
 ## Installation
 
@@ -57,39 +57,60 @@ This will:
 
 ### Individual Commands
 
-#### 1. Generate Dataset
+#### Using Configuration File (Recommended)
+
+All commands support the `--config` option to use configuration file defaults:
 
 ```bash
+# 1. Generate Dataset (uses config.yaml defaults)
+milvus-geo-bench --config config.yaml generate-dataset
+
+# 2. Load Data to Milvus (uses config.yaml + environment variables)
+milvus-geo-bench --config config.yaml load-data
+
+# 3. Run Benchmark (uses config.yaml for all settings)
+milvus-geo-bench --config config.yaml run-benchmark
+
+# 4. Evaluate Results (uses config.yaml for output paths)
+milvus-geo-bench --config config.yaml evaluate
+```
+
+#### Command Line Arguments (Override Config)
+
+You can override specific config values with command line arguments:
+
+```bash
+# Override specific parameters while using config defaults
+milvus-geo-bench --config config.yaml generate-dataset --num-points 50000
+milvus-geo-bench --config config.yaml run-benchmark --concurrency 50
+milvus-geo-bench --config config.yaml evaluate --format json
+```
+
+#### Legacy Usage (Without Config File)
+
+```bash
+# 1. Generate Dataset
 milvus-geo-bench generate-dataset \
   --num-points 100000 \
   --num-queries 1000 \
   --output-dir ./data
-```
 
-#### 2. Load Data to Milvus
-
-```bash
+# 2. Load Data to Milvus
 milvus-geo-bench load-data \
   --uri $MILVUS_URI \
   --token $MILVUS_TOKEN \
   --collection geo_bench \
   --data-file ./data/train.parquet
-```
 
-#### 3. Run Benchmark
-
-```bash
+# 3. Run Benchmark
 milvus-geo-bench run-benchmark \
   --uri $MILVUS_URI \
   --token $MILVUS_TOKEN \
   --collection geo_bench \
   --queries ./data/test.parquet \
   --output ./data/results.parquet
-```
 
-#### 4. Evaluate Results
-
-```bash
+# 4. Evaluate Results
 milvus-geo-bench evaluate \
   --results ./data/results.parquet \
   --ground-truth ./data/ground_truth.parquet \
@@ -107,23 +128,42 @@ MILVUS_TOKEN=your-api-token
 
 ### Configuration File (config.yaml)
 
+**New: All commands now support `--config` for unified configuration!**
+
 ```yaml
+# Dataset generation settings
 dataset:
-  num_points: 100000
-  num_queries: 1000
-  bbox: [-180, -90, 180, 90]  # World coordinates
-  min_points_per_query: 100
+  num_points: 1000000          # Number of training points
+  num_queries: 1000            # Number of test queries  
+  output_dir: ./data           # Output directory
+  bbox: [-180, -90, 180, 90]   # World coordinates [min_lon, min_lat, max_lon, max_lat]
+  min_points_per_query: 100    # Minimum results per query
 
+# Milvus connection settings
 milvus:
-  uri: ${MILVUS_URI}
-  token: ${MILVUS_TOKEN}
-  collection: geo_bench
-  batch_size: 1000
+  uri: ${MILVUS_URI}           # Environment variable substitution
+  token: ${MILVUS_TOKEN}       # Environment variable substitution
+  collection: geo_bench        # Collection name
+  batch_size: 1000            # Batch size for data insertion
+  timeout: 30                 # Connection timeout
 
+# Benchmark execution settings
 benchmark:
-  timeout: 30
-  warmup: 10
+  timeout: 30                 # Query timeout in seconds
+  warmup: 10                  # Number of warmup queries
+  concurrency: 100            # Parallel query execution threads
+
+# Output settings
+output:
+  results: ./data/results.parquet              # Benchmark results file
+  report: ./reports/evaluation_report.md       # Evaluation report file
 ```
+
+**Benefits of using config files:**
+- Consistent settings across all commands
+- Environment variable substitution (${VAR_NAME})
+- Override specific values with CLI arguments
+- Version control friendly configuration
 
 ## Data Format
 
@@ -186,8 +226,14 @@ The tool provides comprehensive accuracy and performance metrics:
 ### Global Options
 
 ```bash
+# Get help
 milvus-geo-bench --help
+
+# Use configuration file with verbose logging
 milvus-geo-bench --verbose --config config.yaml <command>
+
+# All commands support the --config option
+milvus-geo-bench --config config.yaml <command> [options]
 ```
 
 ### Commands
@@ -202,19 +248,36 @@ Use `--help` with any command for detailed options.
 
 ## Examples
 
-### Small Test Run
+### Using Configuration File (Recommended)
+
 ```bash
+# Small test run (override config values)
+milvus-geo-bench --config config.yaml generate-dataset --num-points 10000 --num-queries 100
+
+# Geographic region test (San Francisco Bay Area)
+milvus-geo-bench --config config.yaml generate-dataset --bbox "-122.5,37.0,-121.5,38.0"
+
+# High performance benchmark
+milvus-geo-bench --config config.yaml run-benchmark --timeout 60 --warmup 50 --concurrency 200
+
+# Custom output format
+milvus-geo-bench --config config.yaml evaluate --format json --output ./reports/metrics.json
+
+# Complete workflow with config
+milvus-geo-bench --config config.yaml full-run
+```
+
+### Legacy Examples (Without Config File)
+
+```bash
+# Small test run
 milvus-geo-bench generate-dataset --num-points 10000 --num-queries 100
-```
 
-### Geographic Region (San Francisco)
-```bash
+# Geographic region (San Francisco)
 milvus-geo-bench generate-dataset --bbox "-122.5,37.0,-121.5,38.0"
-```
 
-### High Performance Test
-```bash
-milvus-geo-bench run-benchmark --timeout 60 --warmup 50
+# High performance test
+milvus-geo-bench run-benchmark --uri $MILVUS_URI --token $MILVUS_TOKEN --timeout 60 --warmup 50
 ```
 
 ## Development

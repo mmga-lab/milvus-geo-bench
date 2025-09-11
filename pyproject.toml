@@ -27,7 +27,7 @@ dev = [
 ]
 
 [project.scripts]
-milvus-geo-bench = "milvus_geo_bench:main"
+milvus-geo-bench = "milvus_geo_bench.cli:main"
 
 [build-system]
 requires = ["hatchling"]
