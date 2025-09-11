@@ -10,6 +10,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 import pandas as pd
+from tabulate import tabulate
 import yaml
 
 
@@ -27,7 +28,8 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
     load_dotenv()  # Load environment variables from .env file
 
     if config_path and Path(config_path).exists():
-        with open(config_path, encoding="utf-8") as f:
+        config_file_path = Path(config_path)
+        with config_file_path.open(encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Replace environment variables in config
@@ -196,6 +198,4 @@ def format_duration(seconds: float) -> str:
 
 def print_table(data: list, headers: list) -> None:
     """Print data as formatted table."""
-    from tabulate import tabulate
-
     print(tabulate(data, headers=headers, tablefmt="grid"))

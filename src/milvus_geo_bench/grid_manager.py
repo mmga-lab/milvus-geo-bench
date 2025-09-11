@@ -155,7 +155,7 @@ class GridManager:
         }
 
         metadata_file = output_dir / "grid_metadata.json"
-        with open(metadata_file, "w", encoding="utf-8") as f:
+        with metadata_file.open("w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
         logging.info(f"Saved grid metadata to {metadata_file}")
@@ -163,7 +163,8 @@ class GridManager:
 
     def load_metadata(self, metadata_file: str) -> dict[str, Any]:
         """Load grid metadata from JSON file."""
-        with open(metadata_file, encoding="utf-8") as f:
+        metadata_path = Path(metadata_file)
+        with metadata_path.open(encoding="utf-8") as f:
             metadata = json.load(f)
 
         # Validate compatibility

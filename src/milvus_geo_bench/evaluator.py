@@ -3,6 +3,7 @@ Evaluation module for benchmark results.
 """
 
 from datetime import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -278,8 +279,6 @@ class Evaluator:
         elif output_format.lower() == "markdown":
             report_content = self._generate_markdown_report(metrics)
         elif output_format.lower() == "json":
-            import json
-
             report_content = json.dumps(metrics, indent=2)
         else:
             report_content = str(metrics)
@@ -288,7 +287,7 @@ class Evaluator:
         if output_file:
             output_path = Path(output_file)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
+            with output_path.open("w", encoding="utf-8") as f:
                 f.write(report_content)
             logging.info(f"Report saved to {output_path}")
 
@@ -453,7 +452,6 @@ class Evaluator:
         print(f"  Queries with false positives: {error_query_count}")
 
         # Show precision distribution
-        precision_stats = metrics.get("precision_stats", {})
         print("  Precision distribution:")
         print(
             f"    Perfect (1.0): {sum(1 for m in metrics.get('query_metrics', []) if m.get('precision', 0) == 1.0)} queries"
@@ -475,7 +473,7 @@ class Evaluator:
             error_queries = metrics.get("queries_with_errors", [])
             if error_queries:
                 print("  Top 5 worst queries (by false positive count):")
-                for i, query in enumerate(error_queries[:5]):
+                for _, query in enumerate(error_queries[:5]):
                     print(
                         f"    Query {query['query_id']}: {query['false_positives']} wrong results "
                         f"(precision: {query['precision']:.3f})"
