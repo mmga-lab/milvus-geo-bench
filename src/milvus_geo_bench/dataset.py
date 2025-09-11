@@ -315,13 +315,19 @@ class DatasetGenerator:
         # Generate training data by grid
         train_files = self._generate_train_data_by_grid(train_dir)
 
-        # Generate test queries
+        # Generate test queries (before shuffling train files)
         test_df = self._generate_test_queries_with_grid(output_path)
         test_file = output_path / "test.parquet"
-        save_parquet(test_df, test_file)
 
-        # Calculate ground truth
+        # Calculate ground truth (before shuffling anything)
         ground_truth_df = self._calculate_ground_truth_with_grid(test_df, output_path)
+
+        # Now shuffle training data using pairwise approach
+        shuffled_train_files = self._shuffle_grid_train_data_pairwise(train_dir, train_files)
+
+        # Save and shuffle test queries
+        save_parquet(test_df, test_file)
+        self._shuffle_test_data(test_file)
         ground_truth_file = output_path / "ground_truth.parquet"
         save_parquet(ground_truth_df, ground_truth_file)
 
@@ -330,7 +336,7 @@ class DatasetGenerator:
 
         return {
             "train": str(train_dir),  # Directory containing grid files
-            "train_files": train_files,  # List of individual grid files
+            "train_files": shuffled_train_files,  # List of shuffled grid files
             "test": str(test_file),
             "ground_truth": str(ground_truth_file),
             "metadata": metadata_file,
@@ -396,7 +402,11 @@ class DatasetGenerator:
         return math.sqrt((point1.x - point2.x) ** 2 + (point1.y - point2.y) ** 2)
 
     def _find_optimal_rectangle_size(
-        self, center: Point, points_coords: np.ndarray, min_count: int, grid_bbox: list | None = None
+        self,
+        center: Point,
+        points_coords: np.ndarray,
+        min_count: int,
+        grid_bbox: list | None = None,
     ) -> tuple[float, float]:
         """
         Find optimal rectangle size to contain at least min_count points.
@@ -451,7 +461,11 @@ class DatasetGenerator:
         return float(half_width), float(half_height)
 
     def _create_rectangle(
-        self, center_lon: float, center_lat: float, half_width: float, half_height: float = None
+        self,
+        center_lon: float,
+        center_lat: float,
+        half_width: float,
+        half_height: float | None = None,
     ) -> Polygon:
         """
         Create rectangle centered at the given point.
@@ -658,3 +672,74 @@ class DatasetGenerator:
             logging.info(f"Queries per grid - Min: {grid_counts.min()}, Max: {grid_counts.max()}")
 
         return df
+
+    def _shuffle_pair(self, file1: str, file2: str) -> None:
+        """Shuffle data between two files"""
+        logging.debug(f"Shuffling pair: {Path(file1).name} and {Path(file2).name}")
+
+        # Load both files
+        df1 = load_parquet(file1)
+        df2 = load_parquet(file2)
+
+        # Combine and shuffle
+        combined = pd.concat([df1, df2], ignore_index=True)
+        shuffled = combined.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        # Split back into two files maintaining original sizes
+        split_point = len(df1)
+        df1_new = shuffled.iloc[:split_point]
+        df2_new = shuffled.iloc[split_point:]
+
+        # Save back to original files
+        save_parquet(df1_new, file1)
+        save_parquet(df2_new, file2)
+
+        # Clean up memory
+        del df1, df2, combined, shuffled, df1_new, df2_new
+
+    def _shuffle_grid_train_data_pairwise(
+        self, train_dir: Path, train_files: list[str]
+    ) -> list[str]:
+        """Shuffle training data using pairwise approach for memory efficiency"""
+        logging.info("Shuffling training data using pairwise approach...")
+
+        current_files = train_files.copy()
+
+        # Single pass shuffling
+        logging.info("Performing pairwise shuffling...")
+
+        # Shuffle pairs: (0,1), (2,3), (4,5)...
+        for i in range(0, len(current_files) - 1, 2):
+            self._shuffle_pair(current_files[i], current_files[i + 1])
+
+        # Shuffle offset pairs: (1,2), (3,4), (5,6)... if we have enough files
+        if len(current_files) > 2:
+            for i in range(1, len(current_files) - 1, 2):
+                self._shuffle_pair(current_files[i], current_files[i + 1])
+
+        # Circular shuffle: pair the last file with the first file
+        if len(current_files) > 1:
+            self._shuffle_pair(current_files[-1], current_files[0])
+            logging.debug("Performed circular shuffle between last and first file")
+
+        # Rename files to new convention
+        new_files = []
+        for i, old_file in enumerate(current_files):
+            old_path = Path(old_file)
+            new_path = train_dir / f"train_{i:02d}.parquet"
+
+            # Rename file
+            old_path.rename(new_path)
+            new_files.append(str(new_path))
+            logging.debug(f"Renamed {old_path.name} to {new_path.name}")
+
+        logging.info(f"Completed shuffling and renamed {len(new_files)} files")
+        return new_files
+
+    def _shuffle_test_data(self, test_file: Path) -> None:
+        """Shuffle test queries in place"""
+        logging.info("Shuffling test queries...")
+        test_df = load_parquet(test_file)
+        shuffled_df = test_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        save_parquet(shuffled_df, test_file)
+        logging.info(f"Shuffled {len(shuffled_df)} test queries")

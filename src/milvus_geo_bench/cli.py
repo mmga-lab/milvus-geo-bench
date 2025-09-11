@@ -6,7 +6,7 @@ from .benchmark import BenchmarkRunner
 from .dataset import DatasetGenerator
 from .evaluator import Evaluator
 from .milvus_client import MilvusGeoClient
-from .utils import ensure_dir, load_config, load_parquet, setup_logging
+from .utils import ensure_dir, load_config, load_parquet, load_train_data, setup_logging
 
 
 @click.group()
@@ -138,7 +138,8 @@ def load_data(
     if batch_size is not None:
         milvus_config["batch_size"] = batch_size
     if data_file is None:
-        data_file = "./data/train.parquet"  # Default data file
+        # Default to train directory or train.parquet
+        data_file = "./data/train" if Path("./data/train").exists() else "./data/train.parquet"
 
     # Validate required parameters
     if not milvus_config.get("uri"):
@@ -159,8 +160,8 @@ def load_data(
     click.echo(f"Loading data from {data_file} to Milvus collection '{final_collection}'...")
     click.echo(f"Batch size: {final_batch_size}, Recreate: {recreate}")
 
-    # Load data
-    train_df = load_parquet(data_file)
+    # Load data (can handle both single files and directories)
+    train_df = load_train_data(data_file)
 
     # Connect to Milvus and load data
     with MilvusGeoClient(uri=final_uri, token=final_token) as client:

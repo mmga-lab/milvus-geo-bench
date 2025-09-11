@@ -105,6 +105,61 @@ def load_parquet(file_path: str | Path) -> pd.DataFrame:
     return df
 
 
+def load_train_data(data_path: str | Path) -> pd.DataFrame:
+    """
+    Load training data from either a single parquet file or a directory of parquet files.
+
+    Args:
+        data_path: Path to a parquet file or directory containing train parquet files
+
+    Returns:
+        Combined DataFrame with all training data
+    """
+    data_path = Path(data_path)
+
+    if not data_path.exists():
+        raise FileNotFoundError(f"Data path not found: {data_path}")
+
+    if data_path.is_file():
+        # Single parquet file
+        logging.info(f"Loading single training file: {data_path}")
+        return load_parquet(data_path)
+
+    elif data_path.is_dir():
+        # Directory containing multiple parquet files
+        # Look for train_*.parquet files (shuffled naming) or train.parquet
+        train_files = sorted(data_path.glob("train_*.parquet"))
+
+        if not train_files:
+            # Fallback to train.parquet or train_grid_*.parquet
+            train_files = list(data_path.glob("train.parquet"))
+            if not train_files:
+                train_files = sorted(data_path.glob("train_grid_*.parquet"))
+
+        if not train_files:
+            raise FileNotFoundError(f"No training parquet files found in directory: {data_path}")
+
+        logging.info(f"Loading {len(train_files)} training files from directory: {data_path}")
+
+        # Load and combine all files
+        dfs = []
+        for train_file in train_files:
+            logging.debug(f"Loading file: {train_file.name}")
+            df = load_parquet(train_file)
+            dfs.append(df)
+
+        # Combine all DataFrames
+        combined_df = pd.concat(dfs, ignore_index=True)
+        logging.info(
+            f"Loaded {len(combined_df)} total training records from {len(train_files)} files"
+        )
+
+        return combined_df
+
+    else:
+        raise ValueError(f"Data path is neither file nor directory: {data_path}")
+
+
 def ensure_dir(path: str | Path) -> Path:
     """Ensure directory exists, create if not."""
     path = Path(path)
