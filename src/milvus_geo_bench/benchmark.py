@@ -2,7 +2,9 @@
 Benchmark execution module for Milvus geo search.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+import time
 from typing import Any
 
 import pandas as pd
@@ -20,9 +22,10 @@ class Benchmark:
         self.milvus_config = config["milvus"]
         self.timeout = self.config.get("timeout", 30)
         self.warmup_queries = self.config.get("warmup", 10)
+        self.concurrency = self.config.get("concurrency", 1)
 
         logging.info(
-            f"Benchmark initialized with timeout: {self.timeout}s, warmup: {self.warmup_queries}"
+            f"Benchmark initialized with timeout: {self.timeout}s, warmup: {self.warmup_queries}, concurrency: {self.concurrency}"
         )
 
     def run_full_benchmark(
@@ -84,13 +87,24 @@ class Benchmark:
         self, client: MilvusGeoClient, collection_name: str, queries_df: pd.DataFrame
     ) -> pd.DataFrame:
         """Run the main benchmark queries."""
-        logging.info(f"Starting benchmark with {len(queries_df)} queries...")
+        logging.info(
+            f"Starting benchmark with {len(queries_df)} queries (concurrency: {self.concurrency})..."
+        )
 
+        if self.concurrency == 1:
+            return self._run_benchmark_serial(client, collection_name, queries_df)
+        else:
+            return self._run_benchmark_concurrent(client, collection_name, queries_df)
+
+    def _run_benchmark_serial(
+        self, client: MilvusGeoClient, collection_name: str, queries_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Run benchmark queries serially (original implementation)."""
         results = []
         failed_queries = 0
 
         for _, query_row in tqdm(
-            queries_df.iterrows(), total=len(queries_df), desc="Benchmark queries"
+            queries_df.iterrows(), total=len(queries_df), desc="Benchmark queries (serial)"
         ):
             query_id = query_row["query_id"]
             expr = query_row["expr"]
@@ -134,6 +148,79 @@ class Benchmark:
 
         return pd.DataFrame(results)
 
+    def _run_benchmark_concurrent(
+        self, client: MilvusGeoClient, collection_name: str, queries_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Run benchmark queries concurrently using ThreadPoolExecutor."""
+        results = []
+        failed_queries = 0
+
+        def execute_single_query(query_row):
+            """Execute a single query and return result."""
+            query_id = query_row["query_id"]
+            expr = query_row["expr"]
+
+            try:
+                result_ids, query_time = client.search_geo(
+                    collection_name=collection_name, expr=expr, timeout=self.timeout
+                )
+
+                return {
+                    "query_id": query_id,
+                    "query_time_ms": query_time,
+                    "result_ids": result_ids,
+                    "result_count": len(result_ids),
+                    "success": True,
+                    "error_message": None,
+                }
+
+            except Exception as e:
+                return {
+                    "query_id": query_id,
+                    "query_time_ms": None,
+                    "result_ids": [],
+                    "result_count": 0,
+                    "success": False,
+                    "error_message": str(e),
+                }
+
+        # Record total execution time
+        total_start_time = time.time()
+
+        # Execute queries concurrently
+        with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
+            # Submit all queries
+            future_to_query = {
+                executor.submit(execute_single_query, query_row): query_row
+                for _, query_row in queries_df.iterrows()
+            }
+
+            # Collect results with progress bar
+            with tqdm(total=len(queries_df), desc="Benchmark queries (concurrent)") as pbar:
+                for future in as_completed(future_to_query):
+                    result = future.result()
+                    results.append(result)
+
+                    if not result["success"]:
+                        failed_queries += 1
+                        logging.error(
+                            f"Query {result['query_id']} failed: {result['error_message']}"
+                        )
+
+                    pbar.update(1)
+
+        total_end_time = time.time()
+        total_execution_time = total_end_time - total_start_time
+
+        # Add total execution time to results for throughput calculation
+        for result in results:
+            result["total_execution_time_s"] = total_execution_time
+
+        if failed_queries > 0:
+            logging.warning(f"{failed_queries} queries failed out of {len(queries_df)}")
+
+        return pd.DataFrame(results)
+
     def _log_benchmark_summary(self, results_df: pd.DataFrame) -> None:
         """Log summary statistics of the benchmark."""
         successful_results = results_df[results_df["success"]]
@@ -167,9 +254,19 @@ class Benchmark:
         logging.info(f"  Max: {result_counts.max()}")
 
         # Throughput calculation
-        total_time = query_times.sum() / 1000  # Convert to seconds
-        throughput = len(successful_results) / total_time if total_time > 0 else 0
-        logging.info(f"Throughput: {throughput:.2f} queries/second")
+        if self.concurrency > 1 and "total_execution_time_s" in successful_results.columns:
+            # For concurrent execution, use actual total execution time
+            total_execution_time = successful_results["total_execution_time_s"].iloc[0]
+            throughput = (
+                len(successful_results) / total_execution_time if total_execution_time > 0 else 0
+            )
+            logging.info(f"Total execution time: {total_execution_time:.2f}s")
+            logging.info(f"Throughput (concurrent): {throughput:.2f} queries/second")
+        else:
+            # Serial execution: sum all query times
+            total_time = query_times.sum() / 1000  # Convert to seconds
+            throughput = len(successful_results) / total_time if total_time > 0 else 0
+            logging.info(f"Throughput (serial): {throughput:.2f} queries/second")
 
     def run_single_query(
         self, client: MilvusGeoClient, collection_name: str, expr: str

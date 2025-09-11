@@ -70,7 +70,9 @@ class MilvusGeoClient:
             )
 
             # Create collection
-            self.client.create_collection(collection_name=collection_name, schema=schema)
+            self.client.create_collection(
+                collection_name=collection_name, schema=schema, consistency_level="Strong"
+            )
 
             logging.info(f"Created collection: {collection_name}")
 
@@ -90,7 +92,7 @@ class MilvusGeoClient:
                 field_name="embedding",
                 index_type="IVF_FLAT",
                 metric_type="L2",
-                params={"nlist": 128}
+                params={"nlist": 128},
             )
 
             self.client.create_index(
@@ -104,7 +106,7 @@ class MilvusGeoClient:
                 geo_index_params = IndexParams()
                 geo_index_params.add_index(
                     field_name="location",
-                    index_type="RTREE"  # Use RTREE instead of GEOMETRY
+                    index_type="RTREE",  # Use RTREE instead of GEOMETRY
                 )
 
                 self.client.create_index(
@@ -152,10 +154,6 @@ class MilvusGeoClient:
                     pbar.update(len(batch_data))
 
             logging.info(f"Successfully inserted {inserted_count} records")
-
-            # # Flush data to ensure persistence
-            # self.client.flush(collection_name=collection_name)
-            # logging.info(f"Flushed collection {collection_name} to ensure data persistence")
 
             # Load collection to memory
             self.client.load_collection(collection_name)

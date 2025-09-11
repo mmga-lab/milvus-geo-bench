@@ -112,9 +112,18 @@ def load_data(
 @click.option("--output", default="./data/results.parquet", help="Results output file")
 @click.option("--timeout", default=30, help="Query timeout in seconds")
 @click.option("--warmup", default=10, help="Number of warmup queries")
+@click.option("--concurrency", default=1, help="Number of concurrent threads for query execution")
 @click.pass_context
 def run_benchmark(
-    ctx, uri: str, token: str, collection: str, queries: str, output: str, timeout: int, warmup: int
+    ctx,
+    uri: str,
+    token: str,
+    collection: str,
+    queries: str,
+    output: str,
+    timeout: int,
+    warmup: int,
+    concurrency: int,
 ):
     """Execute benchmark tests"""
 
@@ -122,7 +131,7 @@ def run_benchmark(
 
     # Update config
     config["milvus"].update({"uri": uri, "token": token, "collection": collection})
-    config["benchmark"].update({"timeout": timeout, "warmup": warmup})
+    config["benchmark"].update({"timeout": timeout, "warmup": warmup, "concurrency": concurrency})
 
     click.echo(f"Running benchmark on collection '{collection}'...")
 

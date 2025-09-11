@@ -215,7 +215,12 @@ class DatasetGenerator:
         """Parse POLYGON WKT to Shapely Polygon."""
         # Extract coordinates from POLYGON ((x1 y1, x2 y2, ...)) or POLYGON((x1 y1, x2 y2, ...))
         # Handle both formats with and without space after POLYGON
-        coords_str = wkt.replace("POLYGON ((", "").replace("POLYGON((", "").replace("))", "").replace(")", "")
+        coords_str = (
+            wkt.replace("POLYGON ((", "")
+            .replace("POLYGON((", "")
+            .replace("))", "")
+            .replace(")", "")
+        )
         coords = []
         for coord_pair in coords_str.split(", "):
             if coord_pair.strip():  # Skip empty strings
@@ -223,7 +228,9 @@ class DatasetGenerator:
                 coords.append((lon, lat))
         return Polygon(coords)
 
-    def _find_optimal_radius(self, center: Point, points_coords: np.ndarray, min_count: int) -> float:
+    def _find_optimal_radius(
+        self, center: Point, points_coords: np.ndarray, min_count: int
+    ) -> float:
         """Find optimal radius using binary search to contain exactly min_count points."""
         center_coords = np.array([center.x, center.y])
 

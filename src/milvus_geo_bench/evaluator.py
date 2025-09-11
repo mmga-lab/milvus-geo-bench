@@ -59,25 +59,25 @@ class Evaluator:
         query_metrics = []
         total_queries_with_results = 0
         total_queries_no_results = 0
-        
+
         for _, row in merged_df.iterrows():
             predicted_ids = row["result_ids_result"]
             true_ids = row["result_ids_truth"]
-            
+
             # Check if query returned any results
             has_results = predicted_ids is not None and len(predicted_ids) > 0
             if has_results:
                 total_queries_with_results += 1
             else:
                 total_queries_no_results += 1
-                
+
             metrics = self._calculate_query_metrics(
                 predicted_ids=predicted_ids,
                 true_ids=true_ids,
                 query_id=row["query_id"],
             )
             query_metrics.append(metrics)
-            
+
         logging.info(f"Queries with results: {total_queries_with_results}")
         logging.info(f"Queries with no results: {total_queries_no_results}")
 
@@ -107,7 +107,9 @@ class Evaluator:
         """Calculate precision, recall, and F1 for a single query."""
 
         # Handle potential None or empty values safely
-        predicted_set = set(predicted_ids) if predicted_ids is not None and len(predicted_ids) > 0 else set()
+        predicted_set = (
+            set(predicted_ids) if predicted_ids is not None and len(predicted_ids) > 0 else set()
+        )
         true_set = set(true_ids) if true_ids is not None and len(true_ids) > 0 else set()
 
         # Calculate intersection
@@ -121,10 +123,12 @@ class Evaluator:
         )
 
         fp_count = len(predicted_set - true_set)
-        
+
         # Log queries with false positives for debugging
         if fp_count > 0:
-            logging.debug(f"Query {query_id}: {fp_count} false positives (precision: {precision:.3f})")
+            logging.debug(
+                f"Query {query_id}: {fp_count} false positives (precision: {precision:.3f})"
+            )
 
         return {
             "query_id": query_id,
@@ -180,18 +184,22 @@ class Evaluator:
         for metric in query_metrics:
             if metric["false_positives"] > 0:
                 fp_count += 1
-                queries_with_errors.append({
-                    "query_id": metric["query_id"],
-                    "precision": metric["precision"],
-                    "false_positives": metric["false_positives"],
-                    "predicted_count": metric["predicted_count"],
-                    "true_count": metric["true_count"]
-                })
+                queries_with_errors.append(
+                    {
+                        "query_id": metric["query_id"],
+                        "precision": metric["precision"],
+                        "false_positives": metric["false_positives"],
+                        "predicted_count": metric["predicted_count"],
+                        "true_count": metric["true_count"],
+                    }
+                )
 
         # Log debug information
-        logging.info(f"Found {fp_count} queries with false positives out of {len(query_metrics)} total queries")
+        logging.info(
+            f"Found {fp_count} queries with false positives out of {len(query_metrics)} total queries"
+        )
         logging.info(f"Total false positives: {total_fp}")
-        
+
         # Sort by false positives count (worst first)
         queries_with_errors.sort(key=lambda x: x["false_positives"], reverse=True)
 
@@ -212,6 +220,17 @@ class Evaluator:
             "error_query_count": len(queries_with_errors),
             "query_metrics": query_metrics,  # Include individual query metrics for analysis
         }
+
+    def _calculate_throughput(self, results_df: pd.DataFrame, query_times: np.ndarray) -> float:
+        """Calculate throughput considering concurrent vs serial execution."""
+        if "total_execution_time_s" in results_df.columns:
+            # Concurrent execution: use actual total execution time
+            total_time_s = results_df["total_execution_time_s"].iloc[0]
+            return len(results_df) / total_time_s if total_time_s > 0 else 0.0
+        else:
+            # Serial execution: use sum of query times
+            total_time_s = np.sum(query_times) / 1000
+            return len(results_df) / total_time_s if total_time_s > 0 else 0.0
 
     def _calculate_distribution_stats(self, values: list[float]) -> dict[str, float]:
         """Calculate distribution statistics for a list of values."""
@@ -241,9 +260,7 @@ class Evaluator:
             "query_time_stats": self._calculate_distribution_stats(query_times.tolist()),
             "result_count_stats": self._calculate_distribution_stats(result_counts.tolist()),
             "total_execution_time_ms": float(np.sum(query_times)),
-            "average_throughput_qps": len(results_df) / (np.sum(query_times) / 1000)
-            if np.sum(query_times) > 0
-            else 0.0,
+            "average_throughput_qps": self._calculate_throughput(results_df, query_times),
         }
 
         return performance_stats
@@ -353,14 +370,14 @@ class Evaluator:
         report.append("")
 
         # Queries with Errors (False Positives)
-        error_queries = metrics.get('queries_with_errors', [])
+        error_queries = metrics.get("queries_with_errors", [])
         if error_queries:
             report.append("## Queries with Wrong Results (False Positives)")
             report.append(f"Found {len(error_queries)} queries that returned incorrect results:")
             report.append("")
             report.append("| Query ID | Precision | False Positives | Predicted | Expected |")
             report.append("|----------|-----------|-----------------|-----------|----------|")
-            
+
             # Show top 20 worst queries
             for query in error_queries[:20]:
                 report.append(
@@ -370,19 +387,21 @@ class Evaluator:
                     f"{query['predicted_count']} | "
                     f"{query['true_count']} |"
                 )
-            
+
             if len(error_queries) > 20:
-                report.append(f"| ... | ... | ... | ... | ... |")
+                report.append("| ... | ... | ... | ... | ... |")
                 report.append(f"*(Showing top 20 of {len(error_queries)} queries with errors)*")
             report.append("")
-            
+
             # Summary statistics for error queries
-            avg_fp = sum(q['false_positives'] for q in error_queries) / len(error_queries)
-            max_fp = max(q['false_positives'] for q in error_queries)
+            avg_fp = sum(q["false_positives"] for q in error_queries) / len(error_queries)
+            max_fp = max(q["false_positives"] for q in error_queries)
             report.append("### Error Query Statistics")
             report.append(f"- Average false positives per error query: {avg_fp:.1f}")
             report.append(f"- Maximum false positives in a single query: {max_fp}")
-            report.append(f"- Percentage of queries with errors: {len(error_queries) / metrics.get('evaluated_queries', 1) * 100:.2f}%")
+            report.append(
+                f"- Percentage of queries with errors: {len(error_queries) / metrics.get('evaluated_queries', 1) * 100:.2f}%"
+            )
             report.append("")
 
         return "\n".join(report)
@@ -424,35 +443,43 @@ class Evaluator:
         print()
 
         # Show error queries information
-        error_query_count = metrics.get('error_query_count', 0)
-        total_evaluated = metrics.get('evaluated_queries', 0)
-        total_fp = metrics.get('total_false_positives', 0)
-        
+        error_query_count = metrics.get("error_query_count", 0)
+        total_evaluated = metrics.get("evaluated_queries", 0)
+        total_fp = metrics.get("total_false_positives", 0)
+
         # Always show detailed precision analysis
-        print(f"Precision Analysis:")
+        print("Precision Analysis:")
         print(f"  Total false positives across all queries: {total_fp}")
         print(f"  Queries with false positives: {error_query_count}")
-        
+
         # Show precision distribution
-        precision_stats = metrics.get('precision_stats', {})
-        print(f"  Precision distribution:")
-        print(f"    Perfect (1.0): {sum(1 for m in metrics.get('query_metrics', []) if m.get('precision', 0) == 1.0)} queries")
-        print(f"    Zero (0.0): {sum(1 for m in metrics.get('query_metrics', []) if m.get('precision', 0) == 0.0)} queries")
-        print(f"    Partial (0.0-1.0): {sum(1 for m in metrics.get('query_metrics', []) if 0 < m.get('precision', 0) < 1.0)} queries")
-        
+        precision_stats = metrics.get("precision_stats", {})
+        print("  Precision distribution:")
+        print(
+            f"    Perfect (1.0): {sum(1 for m in metrics.get('query_metrics', []) if m.get('precision', 0) == 1.0)} queries"
+        )
+        print(
+            f"    Zero (0.0): {sum(1 for m in metrics.get('query_metrics', []) if m.get('precision', 0) == 0.0)} queries"
+        )
+        print(
+            f"    Partial (0.0-1.0): {sum(1 for m in metrics.get('query_metrics', []) if 0 < m.get('precision', 0) < 1.0)} queries"
+        )
+
         if error_query_count > 0:
             print("⚠️  Error Analysis:")
             print(f"  Queries with wrong results: {error_query_count}")
             print(f"  Error rate: {error_query_count / total_evaluated * 100:.2f}%")
             print(f"  Total false positives: {metrics.get('total_false_positives', 0)}")
-            
+
             # Show top 5 worst queries
-            error_queries = metrics.get('queries_with_errors', [])
+            error_queries = metrics.get("queries_with_errors", [])
             if error_queries:
-                print(f"  Top 5 worst queries (by false positive count):")
+                print("  Top 5 worst queries (by false positive count):")
                 for i, query in enumerate(error_queries[:5]):
-                    print(f"    Query {query['query_id']}: {query['false_positives']} wrong results "
-                          f"(precision: {query['precision']:.3f})")
+                    print(
+                        f"    Query {query['query_id']}: {query['false_positives']} wrong results "
+                        f"(precision: {query['precision']:.3f})"
+                    )
             print()
 
         if "query_time_stats" in metrics:
