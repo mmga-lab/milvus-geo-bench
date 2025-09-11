@@ -41,6 +41,9 @@ class Benchmark:
         if not client.health_check():
             raise RuntimeError("Milvus health check failed")
 
+        # Verify collection and indexes are ready
+        self._verify_collection_ready(client, collection_name)
+
         # Warmup phase
         self._run_warmup(client, collection_name, queries_df)
 
@@ -54,6 +57,54 @@ class Benchmark:
         self._log_benchmark_summary(results_df)
 
         return results_df
+
+    def _verify_collection_ready(self, client: MilvusGeoClient, collection_name: str) -> None:
+        """Verify that collection and all indexes are ready for benchmarking."""
+        logging.info(f"Verifying collection '{collection_name}' readiness...")
+
+        try:
+            # Check collection statistics
+            stats = client.get_collection_stats(collection_name)
+            if stats:
+                row_count = stats.get("row_count", 0)
+                logging.info(f"Collection has {row_count} rows")
+
+                if row_count == 0:
+                    logging.warning("Collection appears to be empty")
+
+            # Check index status for critical fields
+            fields_to_check = ["embedding", "location"]
+            for field_name in fields_to_check:
+                index_info = client.get_index_status(collection_name, field_name)
+                if index_info:
+                    state = index_info.get("state", "Unknown")
+                    index_type = index_info.get("index_type", "Unknown")
+                    total_rows = index_info.get("total_rows", 0)
+                    indexed_rows = index_info.get("indexed_rows", 0)
+                    pending_rows = index_info.get("pending_index_rows", 0)
+
+                    logging.info(
+                        f"Index for '{field_name}': type={index_type}, state={state}, "
+                        f"progress={indexed_rows}/{total_rows}, pending={pending_rows}"
+                    )
+
+                    if not client.is_index_ready(collection_name, field_name):
+                        logging.warning(f"Index for field '{field_name}' is still building")
+                else:
+                    logging.warning(f"No index found for field '{field_name}'")
+
+            # Final readiness check with brief wait
+            logging.info("Performing final index readiness check...")
+            if client.wait_for_indexes_ready(collection_name, timeout=30, check_interval=2):
+                logging.info("Collection verification completed - all systems ready")
+            else:
+                logging.warning("Some indexes may still be building, but proceeding with benchmark")
+
+        except Exception as e:
+            logging.error(f"Collection readiness verification failed: {e}")
+            raise RuntimeError(
+                f"Collection '{collection_name}' is not ready for benchmarking: {e}"
+            ) from e
 
     def _run_warmup(
         self, client: MilvusGeoClient, collection_name: str, queries_df: pd.DataFrame
