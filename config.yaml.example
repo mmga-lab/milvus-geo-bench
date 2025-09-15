@@ -54,13 +54,36 @@ milvus:
   # Connection timeout in seconds
   timeout: 30
 
+  # Index creation during data loading (deprecated - moved to benchmark section)
+  # Indexes are now created during benchmark step for better control
+  # create_indexes: true
+
 # Benchmark execution settings
 benchmark:
   # Query timeout in seconds
   timeout: 30
-  
+
   # Number of warmup queries to run before measurement
   warmup: 10
+
+  # Concurrency levels to test (can be single value or array)
+  # Examples:
+  # concurrency: 100                    # Single concurrency level
+  # concurrency: [10, 50, 100, 200]     # Multiple levels for QPS optimization
+  concurrency: 100
+
+  # Auto-scaling configuration for finding maximum QPS
+  auto_extend_concurrency: false        # Enable auto-extension beyond configured levels
+  max_concurrency_limit: 1000           # Maximum concurrency to test
+  qps_growth_threshold: 5               # Minimum QPS growth % to continue scaling
+  max_error_rate: 0.05                  # Stop scaling if error rate exceeds this
+
+  # Index creation control
+  create_vector_index: true             # Create vector index before benchmark
+  create_geo_index: true                # Create geo index before benchmark
+                                        # Note: If set to false, existing indexes will be dropped
+                                        # Collection will be released and reloaded during index operations
+                                        # Other collections are automatically released to free memory
 
 # Output settings
 output:
@@ -103,18 +126,54 @@ output:
 #     enabled: true
 #     target_points_per_grid: 500000
 
+# Concurrency testing examples:
+#
+# Test single concurrency level:
+# benchmark:
+#   concurrency: 100
+#
+# Test multiple concurrency levels to find optimal QPS:
+# benchmark:
+#   concurrency: [10, 50, 100, 200, 400]
+#   auto_extend_concurrency: false
+#
+# Auto-scale to find maximum QPS:
+# benchmark:
+#   concurrency: [10, 50, 100]
+#   auto_extend_concurrency: true
+#   max_concurrency_limit: 2000
+#   qps_growth_threshold: 3
+#
+# Test with/without geo index:
+# benchmark:
+#   concurrency: [50, 100, 200]
+#   create_vector_index: true
+#   create_geo_index: false  # Test without geo index (will drop existing RTREE)
+#
 # Usage Examples:
 #
 # Generate small dataset (legacy mode):
 #   milvus-geo-bench --config config.yaml generate-dataset --num-points 100000
 #
-# Generate large dataset (auto-enable grid):  
+# Generate large dataset (auto-enable grid):
 #   milvus-geo-bench --config config.yaml generate-dataset --num-points 100000000
 #
 # Generate with explicit grid configuration:
 #   milvus-geo-bench --config config.yaml generate-dataset \
 #     --num-points 50000000 --grid-enabled --target-points-per-grid 5000000
 #
-# Generate with manual grid layout:
-#   milvus-geo-bench --config config.yaml generate-dataset \
-#     --num-points 25000000 --grid-enabled --num-grids 25
+# Load data (indexes created later during benchmark):
+#   milvus-geo-bench --config config.yaml load-data
+#
+# Run benchmark with multiple concurrency levels:
+#   milvus-geo-bench --config config.yaml run-benchmark --concurrency "10,50,100,200"
+#
+# Run benchmark with auto-scaling:
+#   milvus-geo-bench --config config.yaml run-benchmark --auto-extend --max-concurrency 1000
+#
+# Test without geo index:
+#   milvus-geo-bench --config config.yaml run-benchmark --no-create-geo-index
+#
+# Test specific concurrency with custom settings:
+#   milvus-geo-bench --config config.yaml run-benchmark \
+#     --concurrency "50,100,200" --auto-extend --max-concurrency 500

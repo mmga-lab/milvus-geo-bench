@@ -36,7 +36,7 @@ class MilvusGeoClient:
             raise
 
     def create_collection(self, collection_name: str, recreate: bool = True) -> None:
-        """Create collection with geo and vector fields."""
+        """Create collection with geo and vector fields (without indexes)."""
         try:
             # Drop collection if exists and recreate is True
             if recreate and self.client.has_collection(collection_name):
@@ -73,18 +73,17 @@ class MilvusGeoClient:
                 collection_name=collection_name, schema=schema, consistency_level="Strong"
             )
 
-            logging.info(f"Created collection: {collection_name}")
-
-            # Create indexes
-            self._create_indexes(collection_name)
+            logging.info(f"Created collection: {collection_name} (without indexes)")
 
         except Exception as e:
             logging.error(f"Failed to create collection {collection_name}: {e}")
             raise
 
-    def _create_indexes(self, collection_name: str) -> None:
-        """Create indexes for collection."""
+    def create_vector_index(self, collection_name: str) -> float:
+        """Create vector index and return creation time in seconds."""
         try:
+            start_time = time.time()
+
             # Create vector index using IndexParams
             index_params = IndexParams()
             index_params.add_index(
@@ -98,27 +97,171 @@ class MilvusGeoClient:
                 collection_name=collection_name,
                 index_params=index_params,
             )
-            logging.info(f"Created vector index for {collection_name}")
 
-            # Create geometry index (RTREE for spatial data)
-            try:
-                geo_index_params = IndexParams()
-                geo_index_params.add_index(
-                    field_name="location",
-                    index_type="RTREE",  # Use RTREE instead of GEOMETRY
-                )
+            end_time = time.time()
+            creation_time = end_time - start_time
 
-                self.client.create_index(
-                    collection_name=collection_name,
-                    index_params=geo_index_params,
-                )
-                logging.info(f"Created RTREE geometry index for {collection_name}")
-            except Exception as e:
-                logging.warning(f"Failed to create geometry index (may not be supported): {e}")
+            logging.info(f"Created vector index for {collection_name} in {creation_time:.2f}s")
+            return creation_time
 
         except Exception as e:
-            logging.error(f"Failed to create indexes for {collection_name}: {e}")
+            logging.error(f"Failed to create vector index for {collection_name}: {e}")
             raise
+
+    def drop_vector_index(self, collection_name: str) -> float:
+        """Drop vector index and return operation time in seconds."""
+        try:
+            start_time = time.time()
+
+            # First check if vector index exists
+            if not self._has_vector_index(collection_name):
+                logging.info(f"No vector index found for {collection_name}, nothing to drop")
+                return 0.0
+
+            # Find the vector index name
+            vector_index_name = self._find_vector_index_name(collection_name)
+            if not vector_index_name:
+                logging.warning(f"Could not find vector index name for {collection_name}")
+                return 0.0
+
+            # Release collection before dropping index
+            logging.info(f"Releasing collection {collection_name} before dropping vector index")
+            self.client.release_collection(collection_name)
+
+            # Drop the vector index
+            self.client.drop_index(
+                collection_name=collection_name,
+                index_name=vector_index_name
+            )
+
+            end_time = time.time()
+            drop_time = end_time - start_time
+
+            logging.info(f"Dropped vector index '{vector_index_name}' for {collection_name} in {drop_time:.2f}s")
+            return drop_time
+
+        except Exception as e:
+            logging.error(f"Failed to drop vector index for {collection_name}: {e}")
+            raise
+
+    def _has_vector_index(self, collection_name: str) -> bool:
+        """Check if collection has a vector index."""
+        try:
+            index_info = self.get_index_status(collection_name, "embedding")
+            return bool(index_info)
+        except Exception:
+            return False
+
+    def _find_vector_index_name(self, collection_name: str) -> str | None:
+        """Find the name of the vector index for the embedding field."""
+        try:
+            index_names = self.client.list_indexes(collection_name=collection_name)
+
+            # Try to find the index for the embedding field
+            for idx_name in index_names:
+                try:
+                    idx_info = self.client.describe_index(
+                        collection_name=collection_name, index_name=idx_name
+                    )
+                    if idx_info.get("field_name") == "embedding":
+                        return idx_name
+                except Exception:
+                    continue
+
+            return None
+        except Exception:
+            return None
+
+    def create_geo_index(self, collection_name: str) -> float:
+        """Create geometry index and return creation time in seconds."""
+        try:
+            start_time = time.time()
+
+            # Create geometry index (RTREE for spatial data)
+            geo_index_params = IndexParams()
+            geo_index_params.add_index(
+                field_name="location",
+                index_type="RTREE",
+            )
+
+            self.client.create_index(
+                collection_name=collection_name,
+                index_params=geo_index_params,
+            )
+
+            end_time = time.time()
+            creation_time = end_time - start_time
+
+            logging.info(f"Created RTREE geometry index for {collection_name} in {creation_time:.2f}s")
+            return creation_time
+
+        except Exception as e:
+            logging.error(f"Failed to create geometry index for {collection_name}: {e}")
+            raise
+
+    def drop_geo_index(self, collection_name: str) -> float:
+        """Drop geometry index and return operation time in seconds."""
+        try:
+            start_time = time.time()
+
+            # First check if geo index exists
+            if not self._has_geo_index(collection_name):
+                logging.info(f"No geo index found for {collection_name}, nothing to drop")
+                return 0.0
+
+            # Find the geo index name
+            geo_index_name = self._find_geo_index_name(collection_name)
+            if not geo_index_name:
+                logging.warning(f"Could not find geo index name for {collection_name}")
+                return 0.0
+
+            # Release collection before dropping index
+            logging.info(f"Releasing collection {collection_name} before dropping geo index")
+            self.client.release_collection(collection_name)
+
+            # Drop the geo index
+            self.client.drop_index(
+                collection_name=collection_name,
+                index_name=geo_index_name
+            )
+
+            end_time = time.time()
+            drop_time = end_time - start_time
+
+            logging.info(f"Dropped geo index '{geo_index_name}' for {collection_name} in {drop_time:.2f}s")
+            return drop_time
+
+        except Exception as e:
+            logging.error(f"Failed to drop geo index for {collection_name}: {e}")
+            raise
+
+    def _has_geo_index(self, collection_name: str) -> bool:
+        """Check if collection has a geo index."""
+        try:
+            index_info = self.get_index_status(collection_name, "location")
+            return bool(index_info)
+        except Exception:
+            return False
+
+    def _find_geo_index_name(self, collection_name: str) -> str | None:
+        """Find the name of the geo index for the location field."""
+        try:
+            index_names = self.client.list_indexes(collection_name=collection_name)
+
+            # Try to find the index for the location field
+            for idx_name in index_names:
+                try:
+                    idx_info = self.client.describe_index(
+                        collection_name=collection_name, index_name=idx_name
+                    )
+                    if idx_info.get("field_name") == "location":
+                        return idx_name
+                except Exception:
+                    continue
+
+            return None
+        except Exception:
+            return None
 
     def insert_data(
         self, collection_name: str, data_df: pd.DataFrame, batch_size: int = 1000
@@ -155,20 +298,117 @@ class MilvusGeoClient:
             logging.info(f"Successfully inserted {inserted_count} records")
             # flush data
             self.client.flush(collection_name)
-            # Load collection to memory
-            self.client.load_collection(collection_name)
-            logging.info(f"Loaded collection {collection_name} to memory")
-
-            # Wait for indexes to be ready
-            logging.info("Waiting for indexes to be ready...")
-            if self.wait_for_indexes_ready(collection_name, timeout=600):  # 10 minutes timeout
-                logging.info("All indexes are ready. Data loading completed successfully.")
-            else:
-                logging.warning("Timeout waiting for indexes to be ready. Proceeding anyway.")
+            logging.info(f"Data insertion and flush completed for {collection_name}")
 
         except Exception as e:
             logging.error(f"Failed to insert data: {e}")
             raise
+
+    def load_collection(self, collection_name: str) -> float:
+        """Load collection to memory and return loading time in seconds."""
+        try:
+            start_time = time.time()
+
+            self.client.load_collection(collection_name)
+
+            end_time = time.time()
+            loading_time = end_time - start_time
+
+            logging.info(f"Loaded collection {collection_name} to memory in {loading_time:.2f}s")
+            return loading_time
+
+        except Exception as e:
+            logging.error(f"Failed to load collection {collection_name}: {e}")
+            raise
+
+    def release_collection(self, collection_name: str) -> float:
+        """Release collection from memory and return operation time in seconds."""
+        try:
+            start_time = time.time()
+
+            self.client.release_collection(collection_name)
+
+            end_time = time.time()
+            release_time = end_time - start_time
+
+            logging.info(f"Released collection {collection_name} from memory in {release_time:.2f}s")
+            return release_time
+
+        except Exception as e:
+            logging.error(f"Failed to release collection {collection_name}: {e}")
+            raise
+
+    def is_collection_loaded(self, collection_name: str) -> bool:
+        """Check if collection is currently loaded in memory."""
+        try:
+            # Try to get collection load state
+            # Note: This is a simple check - in practice, you might need to use
+            # client.describe_collection or check collection stats
+            self.client.get_collection_stats(collection_name)
+            # If we can get stats, assume it's loaded (this is a simplification)
+            return True
+        except Exception:
+            return False
+
+    def release_other_collections(self, target_collection: str) -> dict[str, float]:
+        """Release all collections except the target collection and return operation times."""
+        release_times = {}
+
+        try:
+            # Get list of all collections
+            all_collections = self.client.list_collections()
+            logging.debug(f"Found {len(all_collections)} collections: {all_collections}")
+
+            # Filter out the target collection
+            other_collections = [col for col in all_collections if col != target_collection]
+
+            if not other_collections:
+                logging.info(f"No other collections to release (only '{target_collection}' exists)")
+                return release_times
+
+            logging.info(f"Releasing {len(other_collections)} other collections to free up memory")
+
+            for collection_name in other_collections:
+                try:
+                    # Check if collection is loaded before trying to release
+                    if self.is_collection_loaded(collection_name):
+                        start_time = time.time()
+                        self.client.release_collection(collection_name)
+                        end_time = time.time()
+                        release_time = end_time - start_time
+                        release_times[collection_name] = release_time
+                        logging.debug(f"Released collection '{collection_name}' in {release_time:.2f}s")
+                    else:
+                        logging.debug(f"Collection '{collection_name}' is not loaded, skipping release")
+                        release_times[collection_name] = 0.0
+                except Exception as e:
+                    logging.warning(f"Failed to release collection '{collection_name}': {e}")
+                    release_times[collection_name] = -1.0  # Indicate failure
+
+            total_released = len([t for t in release_times.values() if t > 0])
+            total_time = sum(t for t in release_times.values() if t > 0)
+            logging.info(f"Successfully released {total_released} collections in {total_time:.2f}s total")
+
+            return release_times
+
+        except Exception as e:
+            logging.error(f"Failed to release other collections: {e}")
+            raise
+
+    def get_loaded_collections(self) -> list[str]:
+        """Get list of currently loaded collections."""
+        try:
+            all_collections = self.client.list_collections()
+            loaded_collections = []
+
+            for collection_name in all_collections:
+                if self.is_collection_loaded(collection_name):
+                    loaded_collections.append(collection_name)
+
+            return loaded_collections
+        except Exception as e:
+            logging.warning(f"Failed to get loaded collections: {e}")
+            return []
 
     def search_geo(
         self, collection_name: str, expr: str, timeout: int = 30
@@ -292,10 +532,13 @@ class MilvusGeoClient:
             return False
 
     def wait_for_indexes_ready(
-        self, collection_name: str, timeout: int = 300, check_interval: int = 5
+        self, collection_name: str, timeout: int = 300, check_interval: int = 5, fields: list[str] | None = None
     ) -> bool:
-        """Wait for all indexes to be ready."""
-        logging.info(f"Waiting for indexes to be ready for collection '{collection_name}'...")
+        """Wait for specified indexes to be ready."""
+        if fields is None:
+            fields = ["embedding", "location"]  # Default to all fields
+
+        logging.info(f"Waiting for indexes to be ready for collection '{collection_name}' (fields: {fields})...")
 
         # Enable debug logging temporarily for index checking
         original_level = logging.getLogger().level
@@ -303,7 +546,7 @@ class MilvusGeoClient:
             logging.getLogger().setLevel(logging.DEBUG)
 
         start_time = time.time()
-        fields_to_check = ["embedding", "location"]  # Vector and geo fields
+        fields_to_check = fields  # Use specified fields
 
         while time.time() - start_time < timeout:
             all_ready = True

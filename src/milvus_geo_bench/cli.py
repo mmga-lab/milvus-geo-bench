@@ -159,6 +159,7 @@ def load_data(
 
     click.echo(f"Loading data from {data_file} to Milvus collection '{final_collection}'...")
     click.echo(f"Batch size: {final_batch_size}, Recreate: {recreate}")
+    click.echo("Note: Index creation and collection loading will be done during benchmark step")
 
     # Load data (can handle both single files and directories)
     train_df = load_train_data(data_file)
@@ -171,9 +172,14 @@ def load_data(
         # Insert data
         client.insert_data(final_collection, train_df, final_batch_size)
 
-        # Get stats
-        stats = client.get_collection_stats(final_collection)
-        click.echo(f"Data loading completed. Collection stats: {stats}")
+        # Get basic collection info (without loading to memory)
+        try:
+            stats = client.get_collection_stats(final_collection)
+            click.echo(f"Data insertion completed. Collection stats: {stats}")
+        except Exception as e:
+            click.echo(f"Data insertion completed. Note: Could not retrieve stats: {e}")
+
+        click.echo("Collection is ready for benchmarking (indexes will be created during benchmark)")
 
 
 @cli.command("run-benchmark")
@@ -184,7 +190,11 @@ def load_data(
 @click.option("--output", help="Results output file")
 @click.option("--timeout", type=int, help="Query timeout in seconds")
 @click.option("--warmup", type=int, help="Number of warmup queries")
-@click.option("--concurrency", type=int, help="Number of concurrent threads for query execution")
+@click.option("--concurrency", help="Concurrency levels (single value or comma-separated list, e.g., '100' or '10,50,100,200')")
+@click.option("--create-vector-index/--no-create-vector-index", default=None, help="Create vector index before benchmark")
+@click.option("--create-geo-index/--no-create-geo-index", default=None, help="Create geo index before benchmark")
+@click.option("--auto-extend/--no-auto-extend", default=None, help="Auto-extend concurrency to find maximum QPS")
+@click.option("--max-concurrency", type=int, help="Maximum concurrency limit for auto-extension")
 @click.pass_context
 def run_benchmark(
     ctx,
@@ -195,7 +205,11 @@ def run_benchmark(
     output: str | None,
     timeout: int | None,
     warmup: int | None,
-    concurrency: int | None,
+    concurrency: str | None,
+    create_vector_index: bool | None,
+    create_geo_index: bool | None,
+    auto_extend: bool | None,
+    max_concurrency: int | None,
 ):
     """Execute benchmark tests"""
 
@@ -218,7 +232,21 @@ def run_benchmark(
     if warmup is not None:
         benchmark_config["warmup"] = warmup
     if concurrency is not None:
-        benchmark_config["concurrency"] = concurrency
+        # Parse concurrency - support both single values and comma-separated lists
+        if ',' in concurrency:
+            concurrency_list = [int(x.strip()) for x in concurrency.split(',')]
+            benchmark_config["concurrency"] = concurrency_list
+        else:
+            benchmark_config["concurrency"] = int(concurrency)
+
+    if create_vector_index is not None:
+        benchmark_config["create_vector_index"] = create_vector_index
+    if create_geo_index is not None:
+        benchmark_config["create_geo_index"] = create_geo_index
+    if auto_extend is not None:
+        benchmark_config["auto_extend_concurrency"] = auto_extend
+    if max_concurrency is not None:
+        benchmark_config["max_concurrency_limit"] = max_concurrency
     if output is not None:
         output_config["results"] = output
     if queries is None:
@@ -240,6 +268,9 @@ def run_benchmark(
     final_timeout = benchmark_config["timeout"]
     final_warmup = benchmark_config["warmup"]
     final_concurrency = benchmark_config["concurrency"]
+    final_create_vector_index = benchmark_config.get("create_vector_index", True)
+    final_create_geo_index = benchmark_config.get("create_geo_index", True)
+    final_auto_extend = benchmark_config.get("auto_extend_concurrency", False)
 
     click.echo(f"Running benchmark on collection '{final_collection}'...")
     click.echo(f"Using queries from: {queries}")
@@ -247,6 +278,10 @@ def run_benchmark(
     click.echo(
         f"Timeout: {final_timeout}s, Warmup: {final_warmup}, Concurrency: {final_concurrency}"
     )
+    click.echo(f"Index creation - Vector: {final_create_vector_index}, Geo: {final_create_geo_index}")
+    if final_auto_extend:
+        max_limit = benchmark_config.get("max_concurrency_limit", 1000)
+        click.echo(f"Auto-scaling enabled (max limit: {max_limit})")
 
     # Ensure output directory exists
     output_path = Path(final_output)
@@ -257,11 +292,24 @@ def run_benchmark(
         config=config, queries_file=queries, output_file=final_output
     )
 
-    click.echo(f"Benchmark completed. Results saved to {final_output}")
+    click.echo(f"\nBenchmark completed. Results saved to {final_output}")
     click.echo(f"Total queries: {len(results_df)}")
     successful = len(results_df[results_df["success"]])
     click.echo(f"Successful queries: {successful}")
     click.echo(f"Success rate: {successful / len(results_df) * 100:.2f}%")
+
+    # Show optimal concurrency if multiple levels were tested
+    if 'concurrency_level' in results_df.columns:
+        concurrency_levels = results_df['concurrency_level'].unique()
+        if len(concurrency_levels) > 1:
+            from .benchmark import Benchmark
+            benchmark = Benchmark(config)
+            optimal = benchmark._find_optimal_concurrency([
+                benchmark._calculate_concurrency_metrics(
+                    results_df[results_df['concurrency_level'] == level], level
+                ) for level in concurrency_levels
+            ])
+            click.echo(f"Optimal concurrency: {optimal['concurrency']} (QPS: {optimal['qps']:.1f})")
 
 
 @cli.command("evaluate")
@@ -347,6 +395,7 @@ def full_run(ctx, config: str | None, output_dir: str, reports_dir: str):
     train_df = load_parquet(files["train"])
 
     with MilvusGeoClient(uri=milvus_config["uri"], token=milvus_config["token"]) as client:
+        # Only create collection and insert data, no index creation
         client.create_collection(milvus_config["collection"], recreate=True)
         client.insert_data(milvus_config["collection"], train_df, milvus_config["batch_size"])
 
